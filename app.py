@@ -44,6 +44,10 @@ def hello_world(): # Функция обработчик будет вызван
 def about():
     return about_me
 
+@app.route ("/quotes")
+def get_all_quotes():
+    return quotes
+
 #Как подставлять динамические переменные
 #Вариант 1.Попроще.Возвращает значение,которое было введено
 @app.route ("/params/<value>")
@@ -69,12 +73,33 @@ def quote_random() -> dict:
     return jsonify(choice(quotes))
 
 
-#Метод POST
+#Метод POST1
+#@app.route("/quotes", methods=['POST'])
+#def create_quote():
+ #  data = request.json
+ #  print("data = ", data)  
+ #  print ("max=", (max(quotes["id"])))
+ #  return {}, 201
+
+#Метод POST2. Функция создает новую цитату в списке цитат.
 @app.route("/quotes", methods=['POST'])
 def create_quote():
-   data = request.json
-   print("data = ", data)
-   return {}, 201
+    new_quote = request.json
+    last_quote = quotes [-1]
+    new_id = last_quote["id"] + 1
+    new_quote["id"] = new_id
+    quotes.append(new_quote)
+    return {}, 201
+
+#Метод DELETE
+#Удаление цитаты по id
+@app.route ("/quotes/<int:quote_id>", methods = ["DELETE"])
+def delete_quote(quote_id:int):
+    for quote in quotes:
+        if quote["id"] == quote_id:
+            quotes.remove(quote)
+            return ({"message": f"Quote with id={quote_id} has deleted"}), 200
+    return {"error": f"Quote with id {quote_id} not found"}, 404
 
 if __name__ == "__main__":
     app.run(debug=True)
