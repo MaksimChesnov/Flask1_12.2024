@@ -1,4 +1,5 @@
-from flask import Flask, jsonify
+from typing import Any
+from flask import Flask, jsonify, request
 from random import choice
 
 app = Flask(__name__)
@@ -32,6 +33,9 @@ quotes = [
    }
 ]
 
+
+#Метод GET
+
 @app.route("/") # Это первый URL, который мы будем обрабатывать
 def hello_world(): # Функция обработчик будет вызвана при запросе этого URL
     return "Hello, World!"
@@ -63,6 +67,14 @@ def quotes_count():
 @app.route("/quotes/random", methods=["GET"])
 def quote_random() -> dict:
     return jsonify(choice(quotes))
+
+
+#Метод POST
+@app.route("/quotes", methods=['POST'])
+def create_quote():
+   data = request.json
+   print("data = ", data)
+   return {}, 201
 
 if __name__ == "__main__":
     app.run(debug=True)
