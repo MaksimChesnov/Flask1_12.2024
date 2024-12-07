@@ -39,9 +39,21 @@ def hello_world(): # Функция обработчик будет вызван
 def about():
     return about_me
 
-@app.route ("/quotes")
-def get_quotes():
-    return quotes
+#Как подставлять динамические переменные
+#Вариант 1.Попроще.Возвращает значение,которое было введено
+@app.route ("/params/<value>")
+def param_example (value):
+    return jsonify(param=value)
+
+#Вариант 2.Сложнее.Возвращает цитаты
+@app.route ("/quotes/<int:quote_id>")
+def get_quotes(quote_id):
+    for quote in quotes:
+        if quote["id"] == quote_id:
+            return jsonify(quote), 200
+    return {"error": f"Quote with id {quote_id} not found"}, 404
+
+
 
 #@app.route ("/quotes/<int:quotes_id>")
 #def quotes(quotes_id):
