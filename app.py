@@ -2,8 +2,15 @@ from typing import Any
 from flask import Flask, jsonify, request
 from random import choice
 from http import HTTPStatus
+from pathlib import Path #аналог библиотеки OS. Но она ООП
+import sqlite3
+
+BASE_DIR = Path(__file__).parent
+path_to_db = BASE_DIR / "store.db"  # <- тут путь к БД
+
 
 app = Flask(__name__)
+app.config ('JSON_AS_ASCII') = False
 
 about_me = {
     "name": "Максим",
@@ -36,7 +43,7 @@ quotes = [
 
 
 #Метод GET
-
+"""
 @app.route("/") # Это первый URL, который мы будем обрабатывать
 def hello_world(): # Функция обработчик будет вызвана при запросе этого URL
     return "Hello, World!"
@@ -44,10 +51,37 @@ def hello_world(): # Функция обработчик будет вызван
 @app.route ("/about")
 def about():
     return about_me
-
+"""
+    
 @app.route ("/quotes")
 def get_all_quotes():
-    return quotes
+    select_quotes = "SELECT * from quotes"
+    # Подключение в БД
+    connection = sqlite3.connect("store.db")
+    # Создаем cursor, он позволяет делать SQL-запросы
+    cursor = connection.cursor()
+    # Выполняем запрос:
+    cursor.execute(select_quotes)
+
+    # Извлекаем результаты запроса
+    quotes_db = cursor.fetchall()
+    print(f"{quotes=}")
+
+    # Закрыть курсор:
+    cursor.close()
+    # Закрыть соединение:
+    connection.close()
+
+    #Подготовка данных для отправки в правильном формате
+    #Необходимо выполнить преобразование 
+    # было list[tuple] стало list[dict]
+    keys = ("id", "author", "text")
+    quotes = []
+    for quote_db in quotes_db:
+        quote = dict(zip(keys, quote_db))
+        quotes.append (quote)        
+    return jsonify(quotes), 200
+
 
 #Как подставлять динамические переменные
 #Вариант 1.Попроще.Возвращает значение,которое было введено
