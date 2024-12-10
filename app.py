@@ -1,6 +1,7 @@
 from typing import Any
 from flask import Flask, jsonify, request
 from random import choice
+from http import HTTPStatus
 
 app = Flask(__name__)
 
@@ -72,6 +73,13 @@ def quotes_count():
 def quote_random() -> dict:
     return jsonify(choice(quotes))
 
+#Filter - не особо понял ТЗ. Разберусь потом.
+"""@app.route("/quotes/filter")
+def filter_quotes:
+    filtered_quotes = quotes.copy()
+    for key, value in request.args.items():
+"""
+
 
 #Метод POST1
 #@app.route("/quotes", methods=['POST'])
@@ -88,6 +96,10 @@ def create_quote():
     last_quote = quotes [-1]
     new_id = last_quote["id"] + 1
     new_quote["id"] = new_id
+    #Мы проверяем наличие ключа рейтинг и его валидность (от 1 до 5)
+    rating = new_quote.get("rating")
+    if rating is None or rating not in range(1,6):
+        new_quote["rating"] = 1
     quotes.append(new_quote)
     return {}, 201
 
@@ -100,6 +112,23 @@ def delete_quote(quote_id:int):
             quotes.remove(quote)
             return ({"message": f"Quote with id={quote_id} has deleted"}), 200
     return {"error": f"Quote with id {quote_id} not found"}, 404
+
+#Метод PUT - Обновление данных
+@app.route ("/quotes/<int:quote_id>", methods = ["PUT"])
+def edit_quote(quote_id:int):
+    new_data = request.json
+    if set(new_data.keys()) - set (('author', 'rating', 'text')):
+        for quote in quotes:
+            if quote["id"] == quote_id:
+                if "rating" in new_data and new_data["rating"] not in range(1,6):
+                    #Валидируем новое значение рейтинга.В случае успеха, обновляем данные
+                    new_data.pop("rating")
+                quote.update(new_data)
+                return jsonify(quote), HTTPStatus.OK
+    else:
+        return {"error": "Send bad data to update"}, HTTPStatus.BAD_REQUEST
+    return {"error": f"Quote with id {quote_id} not found"}, 404
+
 
 if __name__ == "__main__":
     app.run(debug=True)
