@@ -98,7 +98,7 @@ def get_all_quotes():
     cursor.execute(select_quotes)
 
     quotes_db = cursor.fetchall()
-    print(f"{quotes=}")
+    #print(f"{quotes=}")
     cursor.close()
 
     # Закрыть соединение:
