@@ -56,6 +56,7 @@ class QuoteModel(db.Model):
 ## Логика что будет делать программа при разных URL
     
 # Метод GET
+# Показать все цитаты из БД
 @app.route ("/quotes")
 def get_all_quotes():  
     quotes_db = db.session.scalars(db.select(QuoteModel)).all()
@@ -64,91 +65,51 @@ def get_all_quotes():
         quotes.append(quote.to_dict())
     return jsonify(quotes), 200
 
-
-#Как подставлять динамические переменные
-#Вариант 1.Попроще.Возвращает значение,которое было введено
-@app.route ("/params/<value>")
-def param_example (value):
-    return jsonify(param=value)
-
-#Вариант 2.Сложнее.Возвращает цитаты
+# Возвращает цитату по id
 @app.route ("/quotes/<int:quote_id>")
 def get_quote(quote_id: int) -> dict:
-    # Функция возвращает цитату по значению ключа quote_id
-    select_quote = "SELECT * FROM quotes WHERE id = ?"
-    cursor = get_db().cursor()
-    cursor.execute(select_quote, (quote_id,))
-    quote_db = cursor.fetchone() # Получаем одну запись из БД
-    if quote_db:
-        keys = ("id", "author", "text", "rating")
-        quote = dict(zip(keys, quote_db))
-        return jsonify(quote), 200
+    quote = db.session.get(QuoteModel, quote_id)
+    if quote:
+        return jsonify(quote.to_dict()), 200
     return {"error": f"Quote with id {quote_id} not found"}, 404
 
-#Количество цитат
-@app.get("/quotes/count")
-def quotes_count():
-    select_count = "SELECT count(*) as count FROM quotes"
-    cursor = get_db().cursor()
-    cursor.execute(select_count)
-    count = cursor.fetchone()
-    if count:
-        return jsonify(count=count[0]), 200
-    abort(503) # Если что-то пошло не так, пишем ошибку Сервис не доступен
-
-#Случайная цитата
-# @app.route("/quotes/random", methods=["GET"])
-# def quote_random() -> dict:
-#     return jsonify(choice(quotes))
-
-#Filter - не особо понял ТЗ. Разберусь потом.
-"""@app.route("/quotes/filter")
-def filter_quotes:
-    filtered_quotes = quotes.copy()
-    for key, value in request.args.items():
-"""
+# Фильтр
+#@app.route ("/quotes/filter"):
 
 
-#Метод POST. Новая цитата добавляется в БД
+# Метод POST
+# Добавление новой цитаты в БД
 @app.route("/quotes", methods=['POST'])
 def create_quote():
-    new_quote = request.json
-    insert_quote = "INSERT INTO quotes (author, text, rating) VALUES (?, ?, ?)"
-    connection = get_db()
-    cursor = connection.cursor()
-    cursor.execute(insert_quote, (new_quote["author"], new_quote["text"], new_quote["rating"]))
-    answer = cursor.lastrowid
-    connection.commit()
-    new_quote["id"] = answer
-    return jsonify(new_quote), 201
+    data = request.json
+    new_quote = QuoteModel(data["author"], data["text"], data["rating"])
+    db.session.add(new_quote)
+    db.session.commit()
+    return jsonify(new_quote.to_dict()), 201
 
+# Метод PUT
+# Обновление цитаты по id
+@app.route ("/quotes/<int:quote_id>", methods = ["PUT"])
+def edit_quote(quote_id:int):
+    data = request.json
+    quote = db.session.get(QuoteModel, quote_id)
+    quote.text = data["text"]
+    db.session.commit()
+    return jsonify(quote.to_dict(), data), HTTPStatus.OK
+    
+    #return {"error": "Send bad data to update"}, HTTPStatus.BAD_REQUEST
+    #return {"error": f"Quote with id {quote_id} not found"}, 404
 
 #Метод DELETE
 #Удаление цитаты по id
 @app.route ("/quotes/<int:quote_id>", methods = ["DELETE"])
 def delete_quote(quote_id:int):
-    for quote in quotes:
-        if quote["id"] == quote_id:
-            quotes.remove(quote)
-            return ({"message": f"Quote with id={quote_id} has deleted"}), 200
+    answer = db.get_or_404(QuoteModel, quote_id)
+    if answer:
+        db.session.delete(answer);
+        db.session.commit()
+        return ({"message": f"Quote with id={quote_id} has deleted"}), 200
     return {"error": f"Quote with id {quote_id} not found"}, 404
-
-#Метод PUT - Обновление данных
-@app.route ("/quotes/<int:quote_id>", methods = ["PUT"])
-def edit_quote(quote_id:int):
-    new_data = request.json
-    if set(new_data.keys()) - set (('author', 'rating', 'text')):
-        for quote in quotes:
-            if quote["id"] == quote_id:
-                if "rating" in new_data and new_data["rating"] not in range(1,6):
-                    #Валидируем новое значение рейтинга.В случае успеха, обновляем данные
-                    new_data.pop("rating")
-                quote.update(new_data)
-                return jsonify(quote), HTTPStatus.OK
-    else:
-        return {"error": "Send bad data to update"}, HTTPStatus.BAD_REQUEST
-    return {"error": f"Quote with id {quote_id} not found"}, 404
-
 
 if __name__ == "__main__":
     app.run(debug=True)
