@@ -1,16 +1,46 @@
 from typing import Any
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, g, abort
 from random import choice
 from http import HTTPStatus
 from pathlib import Path #аналог библиотеки OS. Но она ООП
 import sqlite3
 
 BASE_DIR = Path(__file__).parent
-path_to_db = BASE_DIR / "store.db"  # <- тут путь к БД
+path_to_db = BASE_DIR / "quotes.db"  # <- тут путь к БД
+#path_to_db = "/Projects/Flask1/quotes.db"
 
 
 app = Flask(__name__)
-app.config ('JSON_AS_ASCII') = False
+#app.config ('JSON_AS_ASCII') = False
+
+#Подключение к БД
+def get_db():
+    db = getattr(g,'_database', None)
+    if db is None:
+        db = g._database = sqlite3.connect(path_to_db)
+    return db
+
+@app.teardown_appcontext
+def close_connection():
+    db = getattr(g,'_database', None)
+    if db is None:
+        db.close()
+
+def new_table (name_db: str):
+    create_table = """
+    CREATE TABLE IF NOT EXISTS quotes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    author TEXT NOT NULL,
+    text TEXT NOT NULL,
+    rating INTEGER NOT NULL
+    );
+    """
+    connection = sqlite3.connect(name_db)
+    cursor = connection.cursor()
+    cursor.execute(create_table)
+    connection.commit()
+    cursor.close()
+    connection.close()
 
 about_me = {
     "name": "Максим",
@@ -55,27 +85,29 @@ def about():
     
 @app.route ("/quotes")
 def get_all_quotes():
-    select_quotes = "SELECT * from quotes"
+    select_quotes = "SELECT * FROM quotes"
+
     # Подключение в БД
-    connection = sqlite3.connect("store.db")
-    # Создаем cursor, он позволяет делать SQL-запросы
+    # Вариант1   
+    connection = sqlite3.connect("quotes.db")
     cursor = connection.cursor()
-    # Выполняем запрос:
+
+    # Вариант 2
+    #cursor = get_db().cursor()
+
     cursor.execute(select_quotes)
 
-    # Извлекаем результаты запроса
     quotes_db = cursor.fetchall()
     print(f"{quotes=}")
-
-    # Закрыть курсор:
     cursor.close()
+
     # Закрыть соединение:
     connection.close()
 
     #Подготовка данных для отправки в правильном формате
     #Необходимо выполнить преобразование 
     # было list[tuple] стало list[dict]
-    keys = ("id", "author", "text")
+    keys = ("id", "author", "text", "rating")
     quotes = []
     for quote_db in quotes_db:
         quote = dict(zip(keys, quote_db))
@@ -91,21 +123,33 @@ def param_example (value):
 
 #Вариант 2.Сложнее.Возвращает цитаты
 @app.route ("/quotes/<int:quote_id>")
-def get_quotes(quote_id):
-    for quote in quotes:
-        if quote["id"] == quote_id:
-            return jsonify(quote), 200
+def get_quote(quote_id: int) -> dict:
+    # Функция возвращает цитату по значению ключа quote_id
+    select_quote = "SELECT * FROM quotes WHERE id = ?"
+    cursor = get_db().cursor()
+    cursor.execute(select_quote, (quote_id,))
+    quote_db = cursor.fetchone() # Получаем одну запись из БД
+    if quote_db:
+        keys = ("id", "author", "text", "rating")
+        quote = dict(zip(keys, quote_db))
+        return jsonify(quote), 200
     return {"error": f"Quote with id {quote_id} not found"}, 404
 
 #Количество цитат
 @app.get("/quotes/count")
 def quotes_count():
-    return jsonify(count=len(quotes))
+    select_count = "SELECT count(*) as count FROM quotes"
+    cursor = get_db().cursor()
+    cursor.execute(select_count)
+    count = cursor.fetchone()
+    if count:
+        return jsonify(count=count[0]), 200
+    abort(503) # Если что-то пошло не так, пишем ошибку Сервис не доступен
 
 #Случайная цитата
-@app.route("/quotes/random", methods=["GET"])
-def quote_random() -> dict:
-    return jsonify(choice(quotes))
+# @app.route("/quotes/random", methods=["GET"])
+# def quote_random() -> dict:
+#     return jsonify(choice(quotes))
 
 #Filter - не особо понял ТЗ. Разберусь потом.
 """@app.route("/quotes/filter")
@@ -124,18 +168,32 @@ def filter_quotes:
  #  return {}, 201
 
 #Метод POST2. Функция создает новую цитату в списке цитат.
+# @app.route("/quotes", methods=['POST'])
+# def create_quote():
+#     new_quote = request.json
+#     last_quote = quotes [-1]
+#     new_id = last_quote["id"] + 1
+#     new_quote["id"] = new_id
+#     #Мы проверяем наличие ключа рейтинг и его валидность (от 1 до 5)
+#     rating = new_quote.get("rating")
+#     if rating is None or rating not in range(1,6):
+#         new_quote["rating"] = 1
+#     quotes.append(new_quote)
+#     return {}, 201
+
+#Метод POST3. Новая цитата добавляется в БД
 @app.route("/quotes", methods=['POST'])
 def create_quote():
     new_quote = request.json
-    last_quote = quotes [-1]
-    new_id = last_quote["id"] + 1
-    new_quote["id"] = new_id
-    #Мы проверяем наличие ключа рейтинг и его валидность (от 1 до 5)
-    rating = new_quote.get("rating")
-    if rating is None or rating not in range(1,6):
-        new_quote["rating"] = 1
-    quotes.append(new_quote)
-    return {}, 201
+    insert_quote = "INSERT INTO quotes (author, text, rating) VALUES (?, ?, ?)"
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute(insert_quote, (new_quote["author"], new_quote["text"], new_quote["rating"]))
+    answer = cursor.lastrowid
+    connection.commit()
+    new_quote["id"] = answer
+    return jsonify(new_quote), 201
+
 
 #Метод DELETE
 #Удаление цитаты по id
@@ -165,4 +223,5 @@ def edit_quote(quote_id:int):
 
 
 if __name__ == "__main__":
+    new_table("quotes.db")
     app.run(debug=True)
