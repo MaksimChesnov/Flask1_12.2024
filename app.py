@@ -5,113 +5,63 @@ from http import HTTPStatus
 from pathlib import Path #аналог библиотеки OS. Но она ООП
 import sqlite3
 
-BASE_DIR = Path(__file__).parent
-path_to_db = BASE_DIR / "quotes.db"  # <- тут путь к БД
-#path_to_db = "/Projects/Flask1/quotes.db"
+#Work with ORM
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String
 
+class Base(DeclarativeBase):
+    pass
+
+## Настройки конфигурации 
+
+BASE_DIR = Path(__file__).parent
 
 app = Flask(__name__)
-#app.config ('JSON_AS_ASCII') = False
+app.config ['JSON_AS_ASCII'] = False
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{BASE_DIR / 'main.db'}"
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-#Подключение к БД
-def get_db():
-    db = getattr(g,'_database', None)
-    if db is None:
-        db = g._database = sqlite3.connect(path_to_db)
-    return db
+db = SQLAlchemy(model_class=Base)
+db.init_app(app)
 
-@app.teardown_appcontext
-def close_connection():
-    db = getattr(g,'_database', None)
-    if db is None:
-        db.close()
+class QuoteModel(db.Model):
+    __tablename__ = 'quotes'
 
-def new_table (name_db: str):
-    create_table = """
-    CREATE TABLE IF NOT EXISTS quotes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    author TEXT NOT NULL,
-    text TEXT NOT NULL,
-    rating INTEGER NOT NULL
-    );
-    """
-    connection = sqlite3.connect(name_db)
-    cursor = connection.cursor()
-    cursor.execute(create_table)
-    connection.commit()
-    cursor.close()
-    connection.close()
+    id: Mapped[int] = mapped_column(primary_key=True)
+    author: Mapped[str] = mapped_column(String(49))
+    text: Mapped[str] = mapped_column(String(358))
+    rating: Mapped[int] = mapped_column(default=1)
 
-about_me = {
-    "name": "Максим",
-    "surname": "Чеснов",
-    "email":"machesnov@gmail.com"
-}
+    def __init__(self, author, text, rating):
+        self.author = author
+        self.text  = text
+        self.rating = rating
 
-quotes = [
-   {
-       "id": 3,
-       "author": "Rick Cook",
-       "text": "Программирование сегодня — это гонка разработчиков программ, стремящихся писать программы с большей и лучшей идиотоустойчивостью, и вселенной, которая пытается создать больше отборных идиотов. Пока вселенная побеждает."
-   },
-   {
-       "id": 5,
-       "author": "Waldi Ravens",
-       "text": "Программирование на С похоже на быстрые танцы на только что отполированном полу людей с острыми бритвами в руках."
-   },
-   {
-       "id": 6,
-       "author": "Mosher’s Law of Software Engineering",
-       "text": "Не волнуйтесь, если что-то не работает. Если бы всё работало, вас бы уволили."
-   },
-   {
-       "id": 8,
-       "author": "Yoggi Berra",
-       "text": "В теории, теория и практика неразделимы. На практике это не так."
-   }
-]
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "author": self.author,
+            "text": self.text,
+            "rating": self.rating
+        }
+
+#Какая-то приблуда. Пусть тоже будет
+# @app.errorhandler(HTTPException)
+# def handle_exception(e):
+#     return jsonify({"message": e.description}), e.code
 
 
-#Метод GET
-"""
-@app.route("/") # Это первый URL, который мы будем обрабатывать
-def hello_world(): # Функция обработчик будет вызвана при запросе этого URL
-    return "Hello, World!"
-
-@app.route ("/about")
-def about():
-    return about_me
-"""
+## Логика что будет делать программа при разных URL
     
+# Метод GET
 @app.route ("/quotes")
-def get_all_quotes():
-    select_quotes = "SELECT * FROM quotes"
-
-    # Подключение в БД
-    # Вариант1   
-    connection = sqlite3.connect("quotes.db")
-    cursor = connection.cursor()
-
-    # Вариант 2
-    #cursor = get_db().cursor()
-
-    cursor.execute(select_quotes)
-
-    quotes_db = cursor.fetchall()
-    #print(f"{quotes=}")
-    cursor.close()
-
-    # Закрыть соединение:
-    connection.close()
-
-    #Подготовка данных для отправки в правильном формате
-    #Необходимо выполнить преобразование 
-    # было list[tuple] стало list[dict]
-    keys = ("id", "author", "text", "rating")
+def get_all_quotes():  
+    quotes_db = db.session.scalars(db.select(QuoteModel)).all()
     quotes = []
-    for quote_db in quotes_db:
-        quote = dict(zip(keys, quote_db))
-        quotes.append (quote)        
+    for quote in quotes_db:
+        quotes.append(quote.to_dict())
     return jsonify(quotes), 200
 
 
@@ -159,29 +109,7 @@ def filter_quotes:
 """
 
 
-#Метод POST1
-#@app.route("/quotes", methods=['POST'])
-#def create_quote():
- #  data = request.json
- #  print("data = ", data)  
- #  print ("max=", (max(quotes["id"])))
- #  return {}, 201
-
-#Метод POST2. Функция создает новую цитату в списке цитат.
-# @app.route("/quotes", methods=['POST'])
-# def create_quote():
-#     new_quote = request.json
-#     last_quote = quotes [-1]
-#     new_id = last_quote["id"] + 1
-#     new_quote["id"] = new_id
-#     #Мы проверяем наличие ключа рейтинг и его валидность (от 1 до 5)
-#     rating = new_quote.get("rating")
-#     if rating is None or rating not in range(1,6):
-#         new_quote["rating"] = 1
-#     quotes.append(new_quote)
-#     return {}, 201
-
-#Метод POST3. Новая цитата добавляется в БД
+#Метод POST. Новая цитата добавляется в БД
 @app.route("/quotes", methods=['POST'])
 def create_quote():
     new_quote = request.json
@@ -223,5 +151,4 @@ def edit_quote(quote_id:int):
 
 
 if __name__ == "__main__":
-    new_table("quotes.db")
     app.run(debug=True)
