@@ -10,6 +10,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import String
+from sqlalchemy.exc import InvalidRequestError
 
 class Base(DeclarativeBase):
     pass
@@ -73,8 +74,20 @@ def get_quote(quote_id: int) -> dict:
         return jsonify(quote.to_dict()), 200
     return {"error": f"Quote with id {quote_id} not found"}, 404
 
-# Фильтр
-#@app.route ("/quotes/filter"):
+# Фильтр. Хз что это, код интересно написан
+@app.route ("/quotes/filter")
+def filter_quotes():
+    try:
+        quotes = db.session.scalars(QuoteModel).filter_by(**request.args).all()
+    except InvalidRequestError:
+        return (
+            (
+                "Invalid data. Possible keys: author, text, rating."
+                f"Received: {", ".join(request.args.keys())}"
+            ),
+            HTTPStatus.BAD_REQUEST,
+        )
+    return [quote.to_dict() for quote in quotes]
 
 
 # Метод POST
@@ -93,12 +106,12 @@ def create_quote():
 def edit_quote(quote_id:int):
     data = request.json
     quote = db.session.get(QuoteModel, quote_id)
-    quote.text = data["text"]
-    db.session.commit()
-    return jsonify(quote.to_dict(), data), HTTPStatus.OK
-    
+    if quote:
+        quote.text = data["text"]
+        db.session.commit()
+        return jsonify(quote.to_dict(), data), HTTPStatus.OK
+    return {"error": f"Quote with id {quote_id} not found"}, 404
     #return {"error": "Send bad data to update"}, HTTPStatus.BAD_REQUEST
-    #return {"error": f"Quote with id {quote_id} not found"}, 404
 
 #Метод DELETE
 #Удаление цитаты по id
